@@ -27,3 +27,5 @@ Copy `.env.example` to `.env`. Only `GEMINI_API_KEY` is needed; the app runs and
 - The project uses `npm` (lockfile is `package-lock.json`).
 - The dev server binds to `0.0.0.0:3000`.
 - Google sign-in and Firestore require network access to Firebase cloud services. The app renders all routes without auth, but user-specific features (progress, chat history, workspace saves) require signing in.
+- The workspace code editor and "Run Tests" / "Save Draft" buttons are UI-only when not signed in — Firestore writes require auth. The editor is still interactive for local edits.
+- If `.env` does not exist, create it from `.env.example`. `GEMINI_API_KEY` can be left empty for all non-AI-chat work.
