@@ -42,3 +42,34 @@ export interface Resource {
   readTime?: string;
   image?: string;
 }
+
+export type QuickCheckQuestion = {
+  question: string;
+  options: string[];
+  correctIndex: number;
+  explanation: string;
+};
+
+export type DiagramBlockData = {
+  type: "mermaid" | "svg";
+  code: string;
+  caption?: string;
+};
+
+export type Section = {
+  id: string;
+  title: string;
+  body: string;
+  diagram?: DiagramBlockData;
+  quiz?: QuickCheckQuestion[];
+};
+
+export type CourseDay = {
+  day: number;
+  title: string;
+  subtitle: string;
+  estimatedMinutes: number;
+  sections: Section[];
+  summary: string[];
+  furtherReading: { label: string; url: string }[];
+};
