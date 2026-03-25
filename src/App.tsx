@@ -10,15 +10,14 @@ import {
   ChevronDown,
   ArrowRight,
   ShieldCheck,
-  Clock,
   CheckCircle2,
   FileText,
   LogOut,
-  LogIn,
   ExternalLink
 } from "lucide-react";
 import { GoogleGenAI } from "@google/genai";
 import { useState, useEffect, useRef, createContext, useContext, useCallback } from "react";
+import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
 import {
   signInWithPopup,
   GoogleAuthProvider,
@@ -31,14 +30,12 @@ import {
   doc,
   setDoc,
   getDoc,
-  getDocs,
   onSnapshot,
   query,
   orderBy,
   limit,
   serverTimestamp,
   addDoc,
-  deleteDoc,
 } from "firebase/firestore";
 import { auth, db } from "./firebase";
 import { cn } from "./lib/utils";
@@ -131,6 +128,11 @@ const ProgressContext = createContext<{
 
 const useProgress = () => useContext(ProgressContext);
 
+const SIDEBAR_MIN_WIDTH = 220;
+const SIDEBAR_MAX_WIDTH = 420;
+const SIDEBAR_DEFAULT_WIDTH = 256;
+const SIDEBAR_COLLAPSE_THRESHOLD = 170;
+
 // --- Scholar Assistant ---
 
 const ScholarAssistant = () => {
@@ -200,19 +202,6 @@ const ScholarAssistant = () => {
     }
   };
 
-  const clearHistory = async () => {
-    if (!user) {
-      setMessages([{ role: "ai", text: "Greetings, Scholar. I am your architectural assistant. How can I help you navigate these complex systems today?" }]);
-      return;
-    }
-    const path = `users/${user.uid}/chat_history`;
-    try {
-      const snapshot = await getDocs(collection(db, path));
-      const deletePromises = snapshot.docs.map(d => deleteDoc(doc(db, path, d.id)));
-      await Promise.all(deletePromises);
-    } catch (error) { handleFirestoreError(error, OperationType.DELETE, path); }
-  };
-
   return (
     <div className="fixed bottom-8 right-8 z-[60]">
       <AnimatePresence>
@@ -233,10 +222,7 @@ const ScholarAssistant = () => {
                   <p className="text-[10px] uppercase tracking-widest opacity-80">Architectural Logic Engine</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <button onClick={clearHistory} title="Clear History" className="hover:bg-white/10 p-1 rounded transition-colors"><X size={16} /></button>
-                <button onClick={() => setIsOpen(false)} className="hover:bg-white/10 p-1 rounded transition-colors"><X size={20} /></button>
-              </div>
+              <button onClick={() => setIsOpen(false)} className="hover:bg-white/10 p-1 rounded transition-colors" aria-label="Close"><X size={20} /></button>
             </div>
             <div ref={scrollRef} className="flex-1 p-4 overflow-auto space-y-4 scrollbar-hide">
               {messages.map((m, i) => (
@@ -308,8 +294,15 @@ const GlobalProgressBar = () => {
 
 // --- Sidebar ---
 
-const Sidebar = () => {
-  const { user } = useAuth();
+const Sidebar = ({
+  width,
+  isResizing,
+  onResizeStart,
+}: {
+  width: number;
+  isResizing: boolean;
+  onResizeStart: (event: ReactMouseEvent<HTMLDivElement>) => void;
+}) => {
   const { progress } = useProgress();
   const location = useLocation();
   const dayCounts = getDaySectionCounts();
@@ -319,7 +312,10 @@ const Sidebar = () => {
   const activeDay = dayMatch ? parseInt(dayMatch[1]) : null;
 
   return (
-    <aside className="fixed left-0 top-0 h-full w-64 bg-surface-container-low flex flex-col p-6 gap-y-2 z-40 hidden md:flex">
+    <aside
+      className="fixed left-0 top-0 h-full bg-surface-container-low flex flex-col p-6 gap-y-2 z-40 hidden md:flex"
+      style={{ width: `${width}px` }}
+    >
       <Link to="/" className="mb-8 px-2 block">
         <h1 className="text-xl font-black tracking-tighter text-on-surface">CS Review</h1>
         <p className="text-[10px] uppercase tracking-widest text-on-surface-variant opacity-60 font-bold">7-Day Full-Stack Refresher</p>
@@ -393,30 +389,30 @@ const Sidebar = () => {
         })}
       </nav>
 
-      <div className="mt-auto p-4 bg-surface-container-high/30 rounded-xl">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-primary-fixed overflow-hidden">
-            <img
-              src={user?.photoURL || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=100"}
-              alt="Scholar Identity"
-              className="w-full h-full object-cover"
-              referrerPolicy="no-referrer"
-            />
-          </div>
-          <div className="overflow-hidden">
-            <p className="text-xs font-bold truncate">{user?.displayName || "Guest Scholar"}</p>
-            <p className="text-[10px] uppercase tracking-tighter opacity-60 font-bold">CS Graduate</p>
-          </div>
-        </div>
-      </div>
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize sidebar"
+        onMouseDown={onResizeStart}
+        className={cn(
+          "absolute top-0 right-0 h-full w-1.5 cursor-col-resize transition-colors",
+          isResizing ? "bg-primary/30" : "hover:bg-primary/20"
+        )}
+      />
     </aside>
   );
 };
 
 // --- Header ---
 
-const Header = () => {
-  const { user, signIn, logout } = useAuth();
+const Header = ({
+  showDesktopMenuButton,
+  onDesktopMenuClick,
+}: {
+  showDesktopMenuButton: boolean;
+  onDesktopMenuClick: () => void;
+}) => {
+  const { user, logout } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
 
@@ -428,6 +424,16 @@ const Header = () => {
       <GlobalProgressBar />
       <header className="sticky top-0 z-50 w-full glass-header flex items-center justify-between px-6 py-3 shadow-[0_12px_32px_rgba(62,0,171,0.04)]">
         <div className="flex items-center gap-6">
+          {showDesktopMenuButton && (
+            <button
+              type="button"
+              onClick={onDesktopMenuClick}
+              className="hidden md:inline-flex p-2 text-on-surface-variant hover:bg-surface-container-high rounded-full transition-all"
+              aria-label="Open sidebar"
+            >
+              <Menu size={20} />
+            </button>
+          )}
           <Link to="/" className="text-xl font-black tracking-tighter text-on-surface md:hidden">CS Review</Link>
 
           <div className="hidden lg:flex items-center gap-1">
@@ -458,7 +464,7 @@ const Header = () => {
             />
           </div>
 
-          {user ? (
+          {user && (
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-full overflow-hidden">
                 <img
@@ -472,11 +478,6 @@ const Header = () => {
                 <LogOut size={18} />
               </button>
             </div>
-          ) : (
-            <button onClick={signIn} className="flex items-center gap-2 px-4 py-2 primary-gradient text-on-primary rounded-full text-sm font-bold hover:opacity-90 transition-opacity">
-              <LogIn size={16} />
-              <span>Sign In</span>
-            </button>
           )}
 
           <button className="md:hidden p-2 text-on-surface-variant" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
@@ -871,44 +872,120 @@ const FurtherReading = ({ links }: { links: { label: string; url: string }[] }) 
 
 const DayCard = ({ day, progress: progressData }: { day: typeof COURSE_DAYS[0]; progress: ProgressData }) => {
   const dayCounts = getDaySectionCounts();
-  const pct = getDayProgress(progressData, day.day, dayCounts[day.day]);
+  const totalLessons = dayCounts[day.day] ?? day.sections.length;
+  const dayKey = `day${day.day}`;
+  const completedLessons = Object.values(progressData[dayKey] ?? {}).filter(Boolean).length;
+  const pct = totalLessons === 0 ? 0 : Math.round((completedLessons / totalLessons) * 100);
   const isComplete = pct === 100;
+  const statusLabel = isComplete ? "COMPLETE" : "IN PROGRESS";
+  const statusClass = isComplete ? "bg-secondary text-on-primary" : "bg-primary text-on-primary";
+
+  const coverTheme = (() => {
+    // Simple per-day color theme for the silhouette covers.
+    switch (day.day) {
+      case 1:
+        return { bg: "bg-primary-fixed", fg: "text-primary" };
+      case 2:
+        return { bg: "bg-secondary-container", fg: "text-secondary" };
+      case 3:
+        return { bg: "bg-surface-container-high", fg: "text-primary" };
+      case 4:
+        return { bg: "bg-primary-container", fg: "text-on-primary" };
+      case 5:
+        return { bg: "bg-surface-container-highest", fg: "text-secondary" };
+      case 6:
+        return { bg: "bg-primary-fixed", fg: "text-secondary" };
+      case 7:
+        return { bg: "bg-secondary-container", fg: "text-primary" };
+      default:
+        return { bg: "bg-surface-container-high", fg: "text-primary" };
+    }
+  })();
 
   return (
     <Link
       to={`/day/${day.day}`}
-      className="group bg-surface-container-lowest rounded-xl p-6 hover:shadow-[0_12px_32px_rgba(62,0,171,0.04)] transition-all duration-300"
+      className="group bg-surface-container-lowest rounded-2xl overflow-hidden hover:shadow-[0_12px_32px_rgba(62,0,171,0.04)] transition-shadow duration-300"
     >
-      <div className="flex items-center justify-between mb-4">
+      <div className="relative">
+        <div className={cn("w-full h-28 md:h-32", coverTheme.bg)}>
+          {/* Silhouette cover: simple “scholar” icon, styled as an editorial card cover. */}
+          <svg
+            viewBox="0 0 800 320"
+            className={cn("w-full h-full", coverTheme.fg)}
+            role="img"
+            aria-label={`${day.title} cover`}
+            preserveAspectRatio="xMidYMid slice"
+          >
+            <defs>
+              <linearGradient id={`g-${day.day}`} x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stopColor="currentColor" stopOpacity="0.75" />
+                <stop offset="1" stopColor="currentColor" stopOpacity="0.25" />
+              </linearGradient>
+            </defs>
+            <rect x="0" y="0" width="800" height="320" fill={`url(#g-${day.day})`} opacity="0.55" />
+
+            {/* Head */}
+            <circle cx="400" cy="105" r="42" fill="currentColor" opacity="0.9" />
+
+            {/* Torso */}
+            <path
+              d="M290 285c25-85 75-135 110-150 35 15 85 65 110 150H290z"
+              fill="currentColor"
+              opacity="0.9"
+            />
+
+            {/* Book/board */}
+            <path
+              d="M260 220c0-18 14-32 32-32h216c18 0 32 14 32 32v74H260v-74z"
+              fill="currentColor"
+              opacity="0.18"
+            />
+            <path
+              d="M292 228h216"
+              stroke="currentColor"
+              strokeWidth="10"
+              strokeLinecap="round"
+              opacity="0.38"
+            />
+            <path
+              d="M320 255h160"
+              stroke="currentColor"
+              strokeWidth="10"
+              strokeLinecap="round"
+              opacity="0.26"
+            />
+            <path
+              d="M330 85c-20 10-30 26-30 45"
+              stroke="currentColor"
+              strokeWidth="10"
+              strokeLinecap="round"
+              opacity="0.25"
+            />
+          </svg>
+        </div>
+
+        <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent pointer-events-none" />
+
         <div className={cn(
-          "w-10 h-10 rounded-lg flex items-center justify-center text-sm font-black",
-          isComplete ? "bg-secondary text-white" : "primary-gradient text-on-primary"
+          "absolute top-4 right-4 px-3 py-1 rounded-full text-[10px] font-black tracking-widest",
+          statusClass
         )}>
-          {isComplete ? <CheckCircle2 size={20} /> : day.day}
-        </div>
-        <div className="flex items-center gap-2">
-          <Clock size={12} className="text-on-surface-variant" />
-          <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">~ {day.estimatedMinutes} min</span>
+          {statusLabel}
         </div>
       </div>
 
-      <h3 className="text-lg font-bold text-on-surface mb-2 group-hover:text-primary transition-colors">{day.title}</h3>
-      <p className="text-sm text-on-surface-variant mb-4 line-clamp-2 leading-relaxed">{day.subtitle}</p>
+      <div className="p-5 space-y-3">
+        <div>
+          <h3 className="text-lg font-bold text-on-surface group-hover:text-primary transition-colors">{day.title}</h3>
+          <p className="text-sm text-on-surface-variant line-clamp-2 leading-relaxed mt-1">{day.subtitle}</p>
+        </div>
 
-      <div className="flex items-center gap-2 text-xs text-on-surface-variant mb-3">
-        <span className="font-bold">{day.sections.length} sections</span>
-        {day.sections.some(s => s.quiz && s.quiz.length > 0) && (
-          <>
-            <span>·</span>
-            <span className="font-bold">{day.sections.filter(s => s.quiz && s.quiz.length > 0).length} quizzes</span>
-          </>
-        )}
-      </div>
-
-      <div className="space-y-1.5">
-        <div className="flex justify-between text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">
+        <div className="flex justify-between text-xs font-bold text-on-surface-variant">
           <span>{pct}% Complete</span>
+          <span>{completedLessons}/{totalLessons} Lessons</span>
         </div>
+
         <div className="h-1 w-full bg-secondary-container rounded-full overflow-hidden">
           <div className="h-full bg-secondary transition-all duration-700" style={{ width: `${pct}%` }} />
         </div>
@@ -990,7 +1067,12 @@ const Landing = () => {
       </section>
 
       <section>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl md:text-2xl font-black tracking-tighter text-on-surface">Days</h2>
+          <span className="text-sm font-bold text-primary/80">View All</span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {COURSE_DAYS.map((day, i) => (
             <motion.div
               key={day.day}
@@ -1001,30 +1083,6 @@ const Landing = () => {
               <DayCard day={day} progress={progress} />
             </motion.div>
           ))}
-        </div>
-      </section>
-
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-12 px-4">
-        <div className="space-y-4">
-          <div className="w-12 h-12 rounded-xl bg-secondary-container text-secondary flex items-center justify-center mb-6">
-            <ShieldCheck size={24} />
-          </div>
-          <h3 className="text-2xl font-bold tracking-tight">Foundational Rigor</h3>
-          <p className="text-on-surface-variant leading-relaxed">From data structures to deployment — every concept explained with precision and backed by diagrams you can actually understand.</p>
-        </div>
-        <div className="space-y-4">
-          <div className="w-12 h-12 rounded-xl bg-primary-container text-primary flex items-center justify-center mb-6">
-            <BookOpen size={24} />
-          </div>
-          <h3 className="text-2xl font-bold tracking-tight">Self-Paced Review</h3>
-          <p className="text-on-surface-variant leading-relaxed">Mark sections complete as you go. Your progress is saved locally — no account required. Pick up exactly where you left off.</p>
-        </div>
-        <div className="space-y-4">
-          <div className="w-12 h-12 rounded-xl bg-surface-container-highest text-on-surface flex items-center justify-center mb-6">
-            <GraduationCap size={24} />
-          </div>
-          <h3 className="text-2xl font-bold tracking-tight">Interview Ready</h3>
-          <p className="text-on-surface-variant leading-relaxed">Quick-check quizzes at every section, a cheat sheet on Day 7, and 10 practice problems spanning the full stack.</p>
         </div>
       </section>
     </motion.div>
@@ -1157,6 +1215,11 @@ export default function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [progress, setProgressState] = useState<ProgressData>(loadProgress);
+  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const sidebarResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const lastExpandedSidebarWidthRef = useRef(SIDEBAR_DEFAULT_WIDTH);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -1200,6 +1263,68 @@ export default function App() {
     setProgressState({ ...updated });
   }, []);
 
+  const startSidebarResize = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    sidebarResizeRef.current = {
+      startX: event.clientX,
+      startWidth: sidebarWidth,
+    };
+    setIsResizingSidebar(true);
+  }, [sidebarWidth]);
+
+  useEffect(() => {
+    if (!isResizingSidebar) return;
+
+    const handleMouseMove = (event: MouseEvent) => {
+      if (!sidebarResizeRef.current) return;
+      const { startX, startWidth } = sidebarResizeRef.current;
+      const nextRawWidth = Math.min(
+        SIDEBAR_MAX_WIDTH,
+        Math.max(0, startWidth + (event.clientX - startX))
+      );
+      if (nextRawWidth <= SIDEBAR_COLLAPSE_THRESHOLD) {
+        setIsSidebarCollapsed(true);
+        return;
+      }
+
+      const nextWidth = Math.max(SIDEBAR_MIN_WIDTH, nextRawWidth);
+      setIsSidebarCollapsed(false);
+      setSidebarWidth(nextWidth);
+      lastExpandedSidebarWidthRef.current = nextWidth;
+    };
+
+    const stopResizing = () => {
+      sidebarResizeRef.current = null;
+      setIsResizingSidebar(false);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", stopResizing);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", stopResizing);
+    };
+  }, [isResizingSidebar]);
+
+  const openSidebarFromHamburger = useCallback(() => {
+    const restoredWidth = Math.max(SIDEBAR_MIN_WIDTH, lastExpandedSidebarWidthRef.current);
+    setSidebarWidth(restoredWidth);
+    setIsSidebarCollapsed(false);
+  }, []);
+
+  useEffect(() => {
+    if (!isResizingSidebar) return;
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    return () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+    };
+  }, [isResizingSidebar]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-surface flex items-center justify-center">
@@ -1212,10 +1337,22 @@ export default function App() {
     <AuthContext.Provider value={{ user, loading, signIn: signInFn, logout: logoutFn }}>
       <ProgressContext.Provider value={{ progress, toggle: toggleSectionProgress }}>
         <Router>
-          <div className="min-h-screen bg-surface flex">
-            <Sidebar />
-            <main className="flex-1 md:ml-64 flex flex-col min-h-screen">
-              <Header />
+          <div
+            className="min-h-screen bg-surface flex"
+            style={{ "--sidebar-width": isSidebarCollapsed ? "0px" : `${sidebarWidth}px` } as CSSProperties}
+          >
+            {!isSidebarCollapsed && (
+              <Sidebar
+                width={sidebarWidth}
+                isResizing={isResizingSidebar}
+                onResizeStart={startSidebarResize}
+              />
+            )}
+            <main className="flex-1 md:ml-[var(--sidebar-width)] flex flex-col min-h-screen">
+              <Header
+                showDesktopMenuButton={isSidebarCollapsed}
+                onDesktopMenuClick={openSidebarFromHamburger}
+              />
               <div className="p-6 md:p-12 max-w-4xl mx-auto w-full flex-1">
                 <AnimatePresence mode="wait">
                   <Routes>
