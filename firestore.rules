@@ -1,0 +1,127 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId} (Firebase Auth UID)
+    // Fields:
+    //   - uid: string (required) - The user's unique ID
+    //   - email: string (required, format: email) - The user's email
+    //   - displayName: string (optional) - The user's display name
+    //   - photoURL: string (optional, format: uri) - The user's profile photo URL
+    //   - role: string (required, enum: ['admin', 'scholar']) - The user's role
+    //   - progress: map (optional) - A map of course IDs to progress percentage
+    //   - createdAt: timestamp (optional) - When the account was created
+    //
+    // Collection: users/{userId}/workspace
+    // Document ID: {courseId}
+    // Fields:
+    //   - uid: string (required) - The owner's UID
+    //   - courseId: string (required) - The course ID
+    //   - code: string (required, max size: 100KB) - The source code
+    //   - updatedAt: timestamp (required) - Last update time
+    //
+    // Collection: users/{userId}/chat_history
+    // Document ID: {messageId}
+    // Fields:
+    //   - uid: string (required) - The owner's UID
+    //   - role: string (required, enum: ['user', 'ai']) - The sender
+    //   - text: string (required, max size: 10KB) - The message text
+    //   - timestamp: timestamp (required) - When the message was sent
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "jthomaschappell@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidUrl(url) {
+      return url is string && (url.matches("^https://.*") || url.matches("^http://.*"));
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return hasOnlyAllowedFields(['uid', 'email', 'displayName', 'photoURL', 'role', 'progress', 'createdAt']) &&
+        data.uid == request.auth.uid &&
+        isValidEmail(data.email) &&
+        (data.role == 'scholar' || (data.role == 'admin' && isAdmin())) &&
+        (!('photoURL' in data) || isValidUrl(data.photoURL));
+    }
+
+    function isValidWorkspaceSnippet(data, userId) {
+      return hasOnlyAllowedFields(['uid', 'courseId', 'code', 'updatedAt']) &&
+        data.uid == userId &&
+        data.uid == request.auth.uid &&
+        data.code is string && data.code.size() < 102400 && // 100KB limit
+        data.updatedAt is timestamp;
+    }
+
+    function isValidChatMessage(data, userId) {
+      return hasOnlyAllowedFields(['uid', 'role', 'text', 'timestamp']) &&
+        data.uid == userId &&
+        data.uid == request.auth.uid &&
+        data.role in ['user', 'ai'] &&
+        data.text is string && data.text.size() < 10240 && // 10KB limit
+        data.timestamp is timestamp;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) && 
+                      (request.resource.data.role == resource.data.role || isAdmin());
+
+      match /workspace/{courseId} {
+        allow read: if isOwner(userId);
+        allow write: if isOwner(userId) && isValidWorkspaceSnippet(request.resource.data, userId);
+      }
+
+      match /chat_history/{messageId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidChatMessage(request.resource.data, userId);
+        allow delete: if isOwner(userId);
+      }
+    }
+
+    // Default deny
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}
