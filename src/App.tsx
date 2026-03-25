@@ -16,7 +16,7 @@ import {
   ExternalLink
 } from "lucide-react";
 import { GoogleGenAI } from "@google/genai";
-import { useState, useEffect, useRef, createContext, useContext, useCallback } from "react";
+import { useState, useEffect, useRef, createContext, useContext, useCallback, useMemo } from "react";
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
 import {
   signInWithPopup,
@@ -414,10 +414,31 @@ const Header = ({
 }) => {
   const { user, logout } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const location = useLocation();
 
   const dayMatch = location.pathname.match(/^\/day\/(\d+)/);
   const activeDay = dayMatch ? parseInt(dayMatch[1]) : null;
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const searchResults = useMemo(() => {
+    if (!normalizedQuery) return [];
+
+    return COURSE_DAYS
+      .flatMap((day) =>
+        day.sections.map((section) => ({
+          day: day.day,
+          dayTitle: day.title,
+          sectionId: section.id,
+          sectionTitle: section.title,
+        }))
+      )
+      .filter(
+        (entry) =>
+          entry.sectionTitle.toLowerCase().includes(normalizedQuery) ||
+          entry.dayTitle.toLowerCase().includes(normalizedQuery)
+      )
+      .slice(0, 8);
+  }, [normalizedQuery]);
 
   return (
     <>
@@ -460,8 +481,37 @@ const Header = ({
             <input
               type="text"
               placeholder="Search topics..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onBlur={() => {
+                window.setTimeout(() => setSearchQuery(""), 120);
+              }}
               className="pl-10 pr-4 py-2 bg-surface-container-high rounded-full text-sm focus:ring-2 focus:ring-primary/20 w-56 transition-all border-none"
             />
+            {normalizedQuery && (
+              <div className="absolute top-full left-0 right-0 mt-2 rounded-xl border border-surface-container-high bg-surface-container-lowest shadow-lg overflow-hidden">
+                {searchResults.length > 0 ? (
+                  <ul className="max-h-72 overflow-auto py-1">
+                    {searchResults.map((result) => (
+                      <li key={`${result.day}-${result.sectionId}`}>
+                        <Link
+                          to={`/day/${result.day}#${result.sectionId}`}
+                          onClick={() => setSearchQuery("")}
+                          className="block px-3 py-2 hover:bg-surface-container-high transition-colors"
+                        >
+                          <p className="text-xs font-bold text-on-surface">{result.sectionTitle}</p>
+                          <p className="text-[10px] uppercase tracking-widest text-on-surface-variant">
+                            Day {result.day}: {result.dayTitle}
+                          </p>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="px-3 py-2 text-xs text-on-surface-variant">No matching topics.</p>
+                )}
+              </div>
+            )}
           </div>
 
           {user && (
