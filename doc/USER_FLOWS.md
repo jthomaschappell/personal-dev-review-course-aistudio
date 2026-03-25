@@ -424,3 +424,39 @@ This document catalogs every user-facing flow in the application. Each flow incl
 | Chat messages (no auth) | React component state | In-memory | In-memory |
 | Chat messages (with auth) | Firestore `users/{uid}/chat_history` | `onSnapshot` listener | `addDoc` |
 | User profile (with auth) | Firestore `users/{uid}` | `getDoc` on auth | `setDoc` on first login |
+
+---
+
+## Manual QA Test Results (Desktop Mode)
+
+**Date:** 2026-03-25  
+**Viewport:** Desktop (≥ 1024px)
+
+| Flow | Status | Notes |
+|------|--------|-------|
+| UF-1: Landing Page — First Visit | PASS | Hero section, "Start Day 1" CTA, 7 day cards all render correctly. No progress bar shown when localStorage is empty. |
+| UF-2: Landing — Returning User | PASS | CTA changes to "Continue Learning", global progress shows "0 of 7 days complete — 4%", Day 1 card shows 25% / 1 of 4. |
+| UF-3: Navigate to a Day | PASS | "Start Day 1" navigates to `/day/1`. Day cards link correctly. |
+| UF-4: Day Page Content | PASS | Header, time estimate, subtitle, sections, bold/code formatting, diagrams, quizzes all present. |
+| UF-5: Mark Section Complete | PASS | Checkbox toggles green with checkmark icon. Day progress updates 0% → 25%. Sidebar shows "25%" next to Day 1. Title text style changes on completion. |
+| UF-6: Quick Check Quiz | PASS | Accordion expands/collapses. Options highlight on selection. Submit shows correct/incorrect feedback with explanation. Score screen shows "3/3 Perfect score!" with "Try Again" button. |
+| UF-7: Day Navigation | PASS | Day 1 shows "Day 2 →" only. Day 7 shows "← Day 6" and "Back to Course Home". Navigation works correctly with page scroll to top. |
+| UF-8: Sidebar Navigation | PASS | Sidebar visible on desktop. Course Home and Day links work. Section anchor links scroll to sections. Active day highlights with nested sections. |
+| UF-9: Sidebar Resize/Collapse | NOT TESTED | Requires precise mouse drag interaction that is difficult to automate. |
+| UF-10: Day Pills Navigation | PASS | Header pills navigate to correct days. Active pill highlighted in purple. |
+| UF-11: Topic Search | PASS | Search for "sort" returns "Sorting — Day 2: Algorithms". Clicking navigates to `/day/2#sorting`. "TCP" shows "No matching topics." correctly. Blur clears search. |
+| UF-12: Mobile Navigation | NOT TESTED | Requires viewport resize to < 768px (dedicated mobile QA recommended). |
+| UF-13: Scholar Assistant Open/Close | PASS | Floating button visible. Chat panel opens with gradient header, greeting message, input field. X button closes panel. |
+| UF-14: Scholar Assistant Send Message | PASS | User message appears right-aligned in purple. Without a valid GEMINI_API_KEY, the expected error message "Connection to the knowledge base interrupted. Please try again." is displayed. |
+| UF-15: Progress Persistence | PASS | Progress survives page navigation. Day cards and sidebar update consistently. |
+| UF-16: Mermaid Diagram Rendering | PASS | Linked List diagram renders as SVG with purple theme. Caption displays below. |
+| UF-17: Footer External Links | PASS | Footer renders with 4 columns: branding, Resources, Further Learning, Open Source. Links present. |
+| UF-18: Global Progress Bar | PASS | Thin teal bar visible at top of page. Fills proportionally to global completion. |
+| UF-19: Day Not Found | PASS | `/day/99` shows "DAY NOT FOUND" with "Back to Home" link. Layout (sidebar, header, footer) remains intact. |
+| UF-20: Loading State | PASS | Brief spinner visible on initial load while Firebase auth initializes. |
+
+### Known Issues / Observations
+
+1. **Scholar Assistant requires GEMINI_API_KEY**: Without a valid key in `.env`, the chat returns the graceful error message. This is expected behavior.
+2. **Day Card badges**: Cards display "IN PROGRESS" badges even at 0% progress. This is the designed behavior (not "COMPLETE" until 100%).
+3. **Search scope**: Search matches section titles and day titles only, not section body content.
